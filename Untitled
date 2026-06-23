@@ -1,0 +1,210 @@
+import pygame 
+import time 
+import random 
+
+pygame.font.init() 
+pygame.mixer.init() 
+
+# 1. Initialize pygame first to read your hardware 
+pygame.init() 
+
+# 2. Get your monitor's exact pixel dimensions 
+info = pygame.display.Info() 
+WIDTH, HEIGHT = info.current_w, info.current_h 
+
+# 3. Open the window in full screen mode 
+WIN = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE) 
+pygame.display.set_caption("Space Dodge") 
+
+PLAYER_WIDTH = 40 
+PLAYER_HEIGHT = 60 
+PLAYER_VEL = 5 
+STAR_WIDTH = 40 
+STAR_HEIGHT = 40 
+STAR_VEL = 7 
+
+# FIXED: Snappy, short arcade laser configuration
+LASER_WIDTH = 4 
+LASER_HEIGHT = 6 
+LASER_VEL = 16 
+
+BG = pygame.image.load("Images/images.jpeg") 
+PLAYER_IMAGE_LOAD = pygame.image.load("Images/player.png") 
+PLAYER_IMAGE = pygame.transform.scale(PLAYER_IMAGE_LOAD, (PLAYER_WIDTH, PLAYER_HEIGHT)) 
+
+ENEMY_FILES = ["Enemy pink.png", "Enemy green.png", "Enemy blue.png"] 
+ENEMY_IMAGES = [] 
+for file in ENEMY_FILES: 
+    img_load = pygame.image.load(f"Images/{file}") 
+    img_scaled = pygame.transform.scale(img_load, (STAR_WIDTH, STAR_HEIGHT)) 
+    ENEMY_IMAGES.append(img_scaled) 
+
+try:
+    SHOOT_SOUND = pygame.mixer.Sound("Images/Gunfire And Voices.mp3") 
+except FileNotFoundError:
+    try:
+        SHOOT_SOUND = pygame.mixer.Sound("Gunfire And Voices.mp3")
+    except FileNotFoundError:
+        import array
+        silent_buffer = array.array('h', [0] * 44100)
+        SHOOT_SOUND = pygame.mixer.Sound(buffer=silent_buffer)
+        print("💡 TIP: 'Gunfire And Voices.mp3' wasn't found, so shooting will be silent for now.")
+
+FONT = pygame.font.SysFont("comicsans", 30) 
+TITLE_FONT = pygame.font.SysFont("comicsans", 70) 
+
+def draw_health_bar(win, x, y, health): 
+    """Draws a classic green/red segmented health bar.""" 
+    MAX_HEALTH = 3 
+    BAR_WIDTH = 150 
+    BAR_HEIGHT = 20 
+    pygame.draw.rect(win, "red", (x, y, BAR_WIDTH, BAR_HEIGHT)) 
+    if health > 0: 
+        current_width = BAR_WIDTH * (health / MAX_HEALTH) 
+        pygame.draw.rect(win, "green", (x, y, current_width, BAR_HEIGHT)) 
+    pygame.draw.rect(win, "white", (x, y, BAR_WIDTH, BAR_HEIGHT), 2) 
+
+def draw(player, elapsed_time, stars, lasers, health, player_img): 
+    WIN.blit(BG, (0, 0)) 
+    
+    time_text = FONT.render(f"Time: {round(elapsed_time)}s", 1, "white") 
+    WIN.blit(time_text, (10, 10)) 
+    
+    draw_health_bar(WIN, 200, 15, health) 
+    WIN.blit(player_img, (player.x, player.y)) 
+    
+    for star in stars: 
+        WIN.blit(star["image"], (star["rect"].x, star["rect"].y)) 
+        
+    for laser in lasers: 
+        pygame.draw.rect(WIN, "red", laser) 
+        
+    pygame.display.update() 
+
+def start_screen(): 
+    """Retro Space Invaders style interactive main menu.""" 
+    run = True 
+    clock = pygame.time.Clock() 
+    blink_timer = 0 
+    show_text = True 
+    colors = ["cyan", "magenta", "yellow", "green", "red"] 
+    color_index = 0 
+    color_change_timer = 0 
+    
+    while run: 
+        clock.tick(60) 
+        blink_timer += 1 
+        color_change_timer += 1 
+        if blink_timer >= 30: 
+            show_text = not show_text 
+            blink_timer = 0 
+        if color_change_timer >= 15: 
+            color_index = (color_index + 1) % len(colors) 
+            color_change_timer = 0 
+            
+        WIN.blit(BG, (0, 0)) 
+        title = TITLE_FONT.render("SPACE DODGE", 1, colors[color_index]) 
+        subtitle = FONT.render("ARCADE EDITION", 1, "white") 
+        WIN.blit(title, (WIDTH/2 - title.get_width()/2, HEIGHT/3)) 
+        WIN.blit(subtitle, (WIDTH/2 - subtitle.get_width()/2, HEIGHT/3 + 80)) 
+        if show_text: 
+            start_text = FONT.render("PRESS SPACE TO START", 1, "orange") 
+            WIN.blit(start_text, (WIDTH/2 - start_text.get_width()/2, HEIGHT/2 + 50)) 
+            
+        pygame.display.update() 
+        
+        for event in pygame.event.get(): 
+            if event.type == pygame.QUIT: 
+                pygame.quit() 
+                exit() 
+                
+        keys = pygame.key.get_pressed() 
+        if keys[pygame.K_SPACE]: 
+            run = False 
+            pygame.time.delay(500) 
+
+def main(): 
+    start_screen() 
+    run = True 
+    player = pygame.Rect(200, HEIGHT - PLAYER_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT) 
+    clock = pygame.time.Clock() 
+    start_time = time.time() 
+    elapsed_time = 0 
+    star_add_increment = 2000 
+    star_count = 0 
+    stars = [] 
+    lasers = [] 
+    health = 3 
+    laser_cooldown = 0 
+    
+    while run: 
+        clock.tick(60) 
+        star_count += 16 
+        elapsed_time = time.time() - start_time 
+        
+        if laser_cooldown > 0: 
+            laser_cooldown -= 1 
+            
+        if star_count > star_add_increment: 
+            for _ in range(3): 
+                star_x = random.randint(0, WIDTH - STAR_WIDTH) 
+                star_rect = pygame.Rect(star_x, -STAR_HEIGHT, STAR_WIDTH, STAR_HEIGHT) 
+                random_image = random.choice(ENEMY_IMAGES) 
+                star_data = { "rect": star_rect, "image": random_image } 
+                stars.append(star_data) 
+            star_add_increment = max(200, star_add_increment - 50) 
+            star_count = 0 
+            
+        for event in pygame.event.get(): 
+            if event.type == pygame.QUIT: 
+                run = False 
+                break 
+                
+        keys = pygame.key.get_pressed() 
+        if keys[pygame.K_LEFT] and player.x - PLAYER_VEL >= 0: 
+            player.x -= PLAYER_VEL 
+        if keys[pygame.K_RIGHT] and player.x + PLAYER_VEL + player.width <= WIDTH: 
+            player.x += PLAYER_VEL 
+            
+        if keys[pygame.K_SPACE] and laser_cooldown == 0: 
+            laser_x = player.x + (PLAYER_WIDTH / 2) - (LASER_WIDTH / 2) 
+            laser_y = player.y 
+            laser = pygame.Rect(laser_x, laser_y, LASER_WIDTH, LASER_HEIGHT) 
+            lasers.append(laser) 
+            SHOOT_SOUND.play() 
+            laser_cooldown = 12 # Decreased cooldown slightly so you can fire faster
+            
+        for laser in lasers[:]: 
+            laser.y -= LASER_VEL 
+            if laser.y < 0: 
+                lasers.remove(laser) 
+                continue 
+            for star in stars[:]: 
+                if laser.colliderect(star["rect"]): 
+                    stars.remove(star) 
+                    if laser in lasers: 
+                        lasers.remove(laser) 
+                    break 
+                    
+        for star in stars[:]: 
+            star_rect = star["rect"] 
+            star_rect.y += STAR_VEL 
+            if star_rect.y > HEIGHT: 
+                stars.remove(star) 
+            elif star_rect.y >= player.y and star_rect.colliderect(player): 
+                stars.remove(star) 
+                health -= 1 
+                if health <= 0: 
+                    run = False 
+                break 
+                
+        draw(player, elapsed_time, stars, lasers, health, PLAYER_IMAGE) 
+        
+    lost_text = FONT.render("You Lost!", 1, "white") 
+    WIN.blit(lost_text, (WIDTH/2 - lost_text.get_width()/2, HEIGHT/2 - lost_text.get_height()/2)) 
+    pygame.display.update() 
+    pygame.time.delay(4000) 
+    pygame.quit() 
+
+if __name__ == '__main__': 
+    main()
